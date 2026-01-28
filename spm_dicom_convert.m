@@ -57,10 +57,10 @@ if nargin<6, meta   = false;  end
 if ~isempty(guff)
     warning('spm:dicom','%d files could not be converted from DICOM.', numel(guff));
     if meta
-      for cguff = 1:numel(guff)
-        guffNIFTI.dat.fname = getfilelocation(guff{cguff}, RootDirectory, 'X', format, OutputDirectory);
-        spm_dicom_metadata(guffNIFTI, guff(cguff));
-      end
+        for cguff = 1:numel(guff)
+            guffNIFTI.dat.fname = getfilelocation(guff{cguff}, RootDirectory, 'X', format, OutputDirectory);
+            spm_dicom_metadata(guffNIFTI, guff(cguff));
+        end
     end
 end
 
