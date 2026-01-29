@@ -13,7 +13,7 @@ images         = cfg_files;
 images.tag     = 'images';
 images.name    = 'Images to de-face';
 images.help    = {'Specify the NIfTI images to strip the face from.'};
-images.filter  = 'image';
+images.filter  = 'nifti';
 images.ufilter = '.*';
 images.num     = [0 Inf];
 
