@@ -157,7 +157,7 @@ nchan = length(sens.label);
 % these are used at multiple places, therefore we determine them only once
 if isfield(sens, 'coilpos')
   ismeg = true;
-  iseeg = true;
+  iseeg = false;
   isnirs = false;
 elseif isfield(sens, 'elecpos')
   ismeg = false;
@@ -286,6 +286,7 @@ switch version
   case '2016'
     % update it to the previous standard version
     new_argin = ft_setopt(varargin, 'version', '2011v2');
+    new_argin = ft_deleteopt(new_argin, {'amplitude', 'distance', 'scaling'});
     sens      = ft_datatype_sens(sens, new_argin{:});
     
     % rename from org to old (reverse = false)
@@ -513,6 +514,11 @@ switch version
       else
         % for EEG it is not required
       end
+    end
+
+    if isfield(sens, 'chantype')
+        % Make sure everything is in lower case
+        sens.chantype = lower(sens.chantype);
     end
     
     if ~isfield(sens, 'unit')
