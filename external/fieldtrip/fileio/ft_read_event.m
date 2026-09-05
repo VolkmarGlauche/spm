@@ -179,6 +179,11 @@ if ~isempty(trigindx)
   chanindx = trigindx;
 end
 
+% this should be a list of indices 
+if islogical(chanindx)
+  chanindx = find(chanindx);
+end
+
 % for backward compatibility with https://github.com/fieldtrip/fieldtrip/issues/1585
 if islogical(readbids)
   % it should be either yes/no/ifmakessense
@@ -231,6 +236,10 @@ if any(strcmp(eventformat, {'brainvision_eeg', 'brainvision_dat'}))
   [p, f] = fileparts(filename);
   filename = fullfile(p, [f '.vhdr']);
   eventformat = 'brainvision_vhdr';
+elseif any(strcmp(eventformat, {'brainvision_bvrd' 'brainvision_bvrh'}))
+  [p, f] = fileparts(filename);
+  filename = fullfile(p, [f '.bvrm']);
+  eventformat = 'brainvision_bvrm';
 end
 
 if strcmp(eventformat, 'brainvision_vhdr')
@@ -496,7 +505,7 @@ switch eventformat
       chanindx = find(strcmp(hdr.label, 'STATUS'));
     end
     event = [];
-    if length(chanindx)==1
+    if isscalar(chanindx)
       % represent the rising flanks in the STATUS (or user specified) channel as events
       event = read_trigger(filename, 'header', hdr, 'dataformat', dataformat, 'begsample', flt_minsample, 'endsample', flt_maxsample, 'chanindx', chanindx, 'detectflank', detectflank, 'trigshift', trigshift, 'trigpadding', trigpadding, 'fixbiosemi', true);
     else
@@ -531,6 +540,23 @@ switch eventformat
       % the user specified a BrainVision dataset without a marker file
       event = [];
     end
+
+  case 'brainvision_bvrm'
+    [p, f, e] = fileparts(filename);
+    [h, orig] = eeg_loadbvrf(p, [f, '.bvrh'], 'sampleInterval', [0 0]); % samples are 0-based
+    origevent = orig{1}.event;
+    sample = [origevent.latency]';
+    sample = mat2cell(sample, ones(numel(sample),1), 1);
+
+    val   = {origevent.bv_value}';
+    code  = {origevent.bv_code}';
+    value = cell(size(val));
+    for i = 1:numel(val)
+      value{i} = char(code{i}+val{i});
+    end
+    event = struct('type', {origevent.bv_type}', ...
+      'sample', sample, ...
+      'value', value);
 
   case 'bucn_nirs'
     event = read_bucn_nirsevent(filename);
@@ -1157,71 +1183,8 @@ switch eventformat
     end
 
   case 'eyelink_asc'
-    if isempty(hdr)
-      hdr = ft_read_header(filename, 'headerformat', headerformat);
-    end
-    if isfield(hdr.orig, 'input')
-      % this is inefficient, since it keeps the complete data in memory
-      % but it does speed up subsequent read operations without the user
-      % having to care about it
-      asc = hdr.orig;
-    else
-      asc = read_eyelink_asc(filename);
-    end
+    [hdr, event] = read_eyelink_asc(filename); % hdr and event are both returned in FT-style
 
-    % the input events are handled differently (because they already
-    % contain a timestamp and value, as per read_eyelink_asc
-    if ~isempty(asc.input)
-      timestamp = asc.input.timestamp;
-      value     = asc.input.value;
-      sample    = (timestamp-hdr.FirstTimeStamp)/hdr.TimeStampPerSample + 1;
-
-      % note that in this dataformat the first input trigger can be before
-      % the start of the data acquisition
-      for i=1:length(timestamp)
-        event(end+1).type       = 'INPUT';
-        event(end  ).sample     = sample(i);
-        event(end  ).timestamp  = timestamp(i);
-        event(end  ).value      = value(i);
-        event(end  ).duration   = 1;
-        event(end  ).offset     = 0;
-      end
-    end
-
-    % these fields are dealt with a bit differently, the 'e' -events
-    % contain more information than the 's' -events
-    fnames = {'eblink', 'efix', 'esacc'};
-    tnames = {'BLINK',  'FIX',  'SACC'};
-    if isfield(asc, 'msg') && istable(asc.msg) && size(asc.msg,2)==2
-      fnames(end+1) = {'msg'};
-      tnames(end+1) = {'MSG'};
-    end
-    for k=1:length(fnames)
-      if isfield(asc, fnames{k}) && ~isempty(asc.(fnames{k}))
-        bfs = asc.(fnames{k});
-
-        timestamp = bfs.stime;
-        sample    = (timestamp-hdr.FirstTimeStamp)/hdr.TimeStampPerSample + 1;
-        if ~strcmp(fnames{k}, 'msg')
-          value     = bfs.eye;
-          duration  = bfs.dur;
-        else
-          value     = bfs.message;
-          duration  = nan(size(bfs,1),1);
-        end
-
-        % note that in this dataformat the first input trigger can be before
-        % the start of the data acquisition
-        for i=1:length(timestamp)
-          event(end+1).type       = tnames{k};
-          event(end  ).sample     = sample(i);
-          event(end  ).timestamp  = timestamp(i);
-          event(end  ).value      = value(i);
-          event(end  ).duration   = duration(i);
-          event(end  ).offset     = 0;
-        end
-      end
-    end
   case 'fcdc_global'
     event = event_queue;
 
@@ -1714,6 +1677,7 @@ switch eventformat
     end
 
     if iscontinuous
+      % determine the trigger channels
       binaryindx = find(strcmp(ft_chantype(hdr), 'digital trigger'));
       otherindx  = find(strcmp(ft_chantype(hdr), 'other trigger'));
       analogindx = find(strcmp(ft_chantype(hdr), 'analog trigger'));
