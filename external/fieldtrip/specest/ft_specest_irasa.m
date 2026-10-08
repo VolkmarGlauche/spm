@@ -94,6 +94,7 @@ if isequal(windowlength, 'auto')
   windownsample = 2^floor(log2(nsmp*0.9));
 elseif isequal(windowlength, 'all')
   windownsample = nsmp;
+  nwindow = 1;
 else
   windownsample = round(fsample*windowlength);
 end
@@ -116,7 +117,7 @@ end
 % check whether zero padding is needed
 if isempty(pad)
   % if no padding is specified this is set equal to the current data length
-  pad = windownsample/fsample;
+  pad = 2*windownsample/fsample;
 end
 if round(pad * fsample) < windownsample
   ft_error('the padding that you specified is shorter than the data');
@@ -173,6 +174,15 @@ else
         case 'dpss'
           tmp = dpss(nsmp_up, 1); % take the first Slepian 
           tmp = tmp(:,1)';
+        case {'sine' 'sine_old' 'alpha'}
+          ft_error('taper = %s is not implemented in ft_specest_irasa', taper);
+        otherwise
+          % create the taper and ensure that it is normalized
+          if isempty(tapopt) % some windowing functions don't support nargin>1, and window.m doesn't check it
+            tmp = window(taper, nsmp_up)';
+          else
+            tmp = window(taper, nsmp_up, tapopt)';
+          end
       end
       tap{ih,1} = tmp./norm(tmp, 'fro');% for upsampled subsets
 
@@ -183,6 +193,15 @@ else
         case 'dpss'
           tmp = dpss(nsmp_down, 1);
           tmp = tmp(:,1)';
+        case {'sine' 'sine_old' 'alpha'}
+          ft_error('taper = %s is not implemented in ft_specest_irasa', taper);
+        otherwise
+          % create the taper and ensure that it is normalized
+          if isempty(tapopt) % some windowing functions don't support nargin>1, and window.m doesn't check it
+            tmp = window(taper, nsmp_down)';
+          else
+            tmp = window(taper, nsmp_down, tapopt)';
+          end
       end
       tap{ih+nhset,1} = tmp./norm(tmp, 'fro');% for downsampled subsets
     end
@@ -209,9 +228,9 @@ end
 
 % set ntaper
 if strcmp(output, 'fractal')
-  ntaper = repmat(size(tap,2),nfreqoi,1); % pretend there's only one taper
+  ntaper = repmat(size(tap,2),1,nfreqoi); % pretend there's only one taper
 elseif strcmp(output, 'original')
-  ntaper = repmat(size(tap,1),nfreqoi,1);
+  ntaper = repmat(size(tap,1),1,nfreqoi);
 end
 
 % feedback of computing progress
@@ -249,6 +268,9 @@ for itap = 1:ntaper(1)
         % compute auto-power of resampled data
         % upsampled
         postpad = ceil(round(pad * fsample) - size(udat,2));
+        if postpad<0
+          ft_error('the requested amount of zero-padding is < 0, this is not possible');
+        end
         tmp = fft(ft_preproc_padding(bsxfun(@times,udat,tap{ih,1}), padtype, 0, postpad), endnsample, 2);
         tmp = tmp(:,freqboi);
         tmp = tmp .* sqrt(2 ./ endnsample);
